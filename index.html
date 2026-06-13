@@ -229,7 +229,7 @@
 </div>
 
 <nav class="nav-pills" role="navigation" aria-label="Navigation par partie">
-  <button class="pill active" onclick="goToPage(0)" id="pill0">1. Identification</button>
+  <button class="pill active" onclick="goToPage(0, true)" id="pill0">1. Identification</button>
   <button class="pill" onclick="goToPage(1)" id="pill1">2. Équipes</button>
   <button class="pill" onclick="goToPage(2)" id="pill2">3. Compétences</button>
   <button class="pill" onclick="goToPage(3)" id="pill3">4. Points divers</button>
@@ -572,7 +572,10 @@ q8Fonctions.forEach((fn, i) => {
 let currentPage = 0;
 const totalPages = 5;
 
-function goToPage(n) {
+function goToPage(n, skipValidation) {
+  /* Bloquer si on avance et que la page courante est invalide */
+  if (!skipValidation && n > currentPage && !validatePage(currentPage)) return;
+
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById('page' + n).classList.add('active');
   document.querySelectorAll('.pill').forEach((p, i) => {
@@ -592,7 +595,177 @@ function goToPage(n) {
 }
 
 function nextPage() { if (currentPage < totalPages - 1) goToPage(currentPage + 1); }
-function prevPage() { if (currentPage > 0) goToPage(currentPage - 1); }
+function prevPage() { if (currentPage > 0) goToPage(currentPage - 1, true); }
+
+/* ===== VALIDATION PAR PAGE ===== */
+function clearErrors(pageId) {
+  const page = document.getElementById(pageId);
+  page.querySelectorAll('.field-error').forEach(el => el.classList.remove('field-error'));
+  page.querySelectorAll('.choices-error').forEach(el => el.classList.remove('choices-error'));
+  page.querySelectorAll('.error-msg').forEach(el => el.remove());
+  const banner = page.querySelector('.error-banner');
+  if (banner) banner.classList.remove('show');
+}
+
+function markError(el, msg) {
+  el.classList.add('field-error');
+  const span = document.createElement('span');
+  span.className = 'error-msg';
+  span.innerHTML = '&#9888; ' + msg;
+  el.parentNode.insertBefore(span, el.nextSibling);
+}
+
+function markChoiceError(container, msg) {
+  container.classList.add('choices-error');
+  const span = document.createElement('span');
+  span.className = 'error-msg';
+  span.innerHTML = '&#9888; ' + msg;
+  container.parentNode.insertBefore(span, container.nextSibling);
+}
+
+function showBanner(pageId, count) {
+  let banner = document.querySelector('#' + pageId + ' .error-banner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.className = 'error-banner';
+    document.getElementById(pageId).querySelector('.section-body').prepend(banner);
+  }
+  banner.innerHTML = '&#9888;&nbsp; <span><strong>' + count + ' champ' + (count > 1 ? 's' : '') + ' obligatoire' + (count > 1 ? 's' : '') + '</strong> ' + (count > 1 ? 'sont' : 'est') + ' manquant' + (count > 1 ? 's' : '') + '. Veuillez les compléter avant de continuer.</span>';
+  banner.classList.add('show');
+  /* Scroller vers la première erreur */
+  const first = document.getElementById('page' + currentPage).querySelector('.field-error, .choices-error');
+  if (first) first.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function validatePage(pageNum) {
+  const pageId = 'page' + pageNum;
+  clearErrors(pageId);
+  let errors = 0;
+
+  if (pageNum === 0) {
+    /* Q0 — Département */
+    const q0 = document.getElementById('Q0_Departement');
+    if (!q0.value.trim()) { markError(q0, 'Le nom du département est obligatoire.'); errors++; }
+
+    /* Q1 — Choix unique obligatoire */
+    const q1 = document.getElementById('q1');
+    if (!document.querySelector('[name=Q1]:checked')) { markChoiceError(q1, 'Veuillez sélectionner une tranche démographique.'); errors++; }
+
+    /* Q2 — Au moins un choix */
+    const q2 = document.getElementById('q2');
+    if (!document.querySelector('[name=Q2]:checked')) { markChoiceError(q2, 'Veuillez sélectionner au moins une caractéristique géographique.'); errors++; }
+
+    /* Q3 — Tous les effectifs (valeur >= 0 obligatoire) */
+    ['Q3_1D_pub','Q3_1D_priv','Q3_2D_pub','Q3_2D_priv'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el.value === '' || el.value === null) { markError(el, 'Champ obligatoire (saisir 0 si non applicable).'); errors++; }
+    });
+
+    /* Q4 — Tous les établissements */
+    ['Q4_ep','Q4_epr','Q4_cp','Q4_cpr','Q4_lp','Q4_lpr'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el.value === '' || el.value === null) { markError(el, 'Champ obligatoire (saisir 0 si non applicable).'); errors++; }
+    });
+  }
+
+  if (pageNum === 1) {
+    /* Q5 — Tous les ETP */
+    for (let i = 1; i <= 12; i++) {
+      const el = document.getElementById('q5_' + i);
+      if (el && (el.value === '' || el.value === null)) { markError(el, 'Saisir 0 si non applicable.'); errors++; }
+    }
+    /* Q5 — Description si autre poste renseigné */
+    const q5_12 = document.getElementById('q5_12');
+    if (q5_12 && parseFloat(q5_12.value) > 0) {
+      const desc = document.getElementById('q5_12_desc');
+      if (!desc.value.trim()) { markError(desc, 'Veuillez décrire ce poste stratégique.'); errors++; }
+    }
+
+    /* Q6 */
+    ['q6_1','q6_2','q6_3','q6_4','q6_5'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el && (el.value === '' || el.value === null)) { markError(el, 'Saisir 0 si non applicable.'); errors++; }
+    });
+
+    /* Q7 */
+    ['Q7_div','Q7_A','Q7_B','Q7_C','Q7_SDJES'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el && (el.value === '' || el.value === null)) { markError(el, 'Saisir 0 si non applicable.'); errors++; }
+    });
+  }
+
+  if (pageNum === 2) {
+    /* Q8 — Tous les menus déroulants */
+    q8Fonctions.forEach((fn, i) => {
+      const el = document.getElementById('q8_' + i);
+      if (el && !el.value) { markError(el, 'Veuillez sélectionner une localisation.'); errors++; }
+    });
+    /* Q8 — Description si "Autre" sélectionné */
+    const q8sel = document.getElementById('q8_' + (q8Fonctions.length - 1));
+    if (q8sel && q8sel.value) {
+      const desc = document.getElementById('q8_autre_desc');
+      if (desc && !desc.value.trim()) { markError(desc, 'Veuillez préciser cette autre fonction.'); errors++; }
+    }
+
+    /* Q9 — CODIR */
+    if (!document.querySelector('[name=Q9]:checked')) {
+      const q9 = document.getElementById('q9');
+      markChoiceError(q9, 'Veuillez sélectionner une option.'); errors++;
+    }
+    /* Q9 autre */
+    if (document.querySelector('[name=Q9]:checked')?.value === 'Autre') {
+      const el = document.getElementById('Q9_autre');
+      if (!el.value.trim()) { markError(el, 'Veuillez préciser la composition de votre CODIR.'); errors++; }
+    }
+
+    /* Q10 — Au moins un choix */
+    if (!document.querySelector('[name=Q10]:checked')) {
+      const q10 = document.querySelector('#page2 .choices:nth-of-type(3)') || [...document.querySelectorAll('#page2 .choices')].pop();
+      if (q10) { markChoiceError(q10, 'Veuillez sélectionner au moins une option.'); errors++; }
+    }
+  }
+
+  if (pageNum === 3) {
+    /* Q11 */
+    if (!document.querySelector('[name=Q11]:checked')) {
+      const q11 = document.querySelector('#page3 .choices');
+      markChoiceError(q11, 'Veuillez sélectionner une option.'); errors++;
+    }
+    /* Q11 détail si Partiellement ou Non */
+    const q11val = document.querySelector('[name=Q11]:checked')?.value;
+    if (q11val && q11val !== 'Oui') {
+      const el = document.getElementById('Q11_detail');
+      if (!el.value.trim()) { markError(el, 'Veuillez préciser les éléments manquants.'); errors++; }
+    }
+
+    /* Q12 — Au moins un choix */
+    if (!document.querySelector('[name=Q12]:checked')) {
+      const q12 = document.querySelectorAll('#page3 .choices')[1];
+      if (q12) { markChoiceError(q12, 'Veuillez sélectionner au moins une option.'); errors++; }
+    }
+
+    /* Q13 */
+    if (!document.querySelector('[name=Q13]:checked')) {
+      const q13 = document.querySelectorAll('#page3 .choices')[2];
+      if (q13) { markChoiceError(q13, 'Veuillez sélectionner une option.'); errors++; }
+    }
+    /* Q13 détail si missions */
+    const q13val = document.querySelector('[name=Q13]:checked')?.value;
+    if (q13val && q13val !== 'Aucune mission académique') {
+      const el = document.getElementById('Q13_detail');
+      if (!el.value.trim()) { markError(el, 'Veuillez préciser vos missions académiques.'); errors++; }
+    }
+
+    /* Q14 et Q15 — textes libres obligatoires */
+    const q14 = document.getElementById('Q14');
+    if (!q14.value.trim()) { markError(q14, 'Ce champ est obligatoire.'); errors++; }
+    const q15 = document.getElementById('Q15');
+    if (!q15.value.trim()) { markError(q15, 'Ce champ est obligatoire.'); errors++; }
+  }
+
+  if (errors > 0) showBanner(pageId, errors);
+  return errors === 0;
+}
 
 /* ===== INTERACTIVITÉ CHOIX ===== */
 document.querySelectorAll('.choice-item input').forEach(inp => {
@@ -696,18 +869,14 @@ function showToast(msg, isErr) {
 }
 
 async function submitForm() {
-  if (!val('Q0_Departement') || val('Q0_Departement') === '—') {
-    showToast('⚠️ Le nom du département est obligatoire.', true);
-    goToPage(0); return;
-  }
+  /* Valider la dernière page de saisie (page 3) avant envoi */
+  if (!validatePage(3)) return;
   const data = collectData();
   try {
-    /* grist.docApi.addRecords envoie les données dans la table Grist */
     if (typeof grist !== 'undefined') {
       await grist.docApi.addRecords('Reponses_DSDEN', [data]);
       showToast('✓ Réponses enregistrées dans Grist !');
     } else {
-      /* Mode test hors Grist — affiche les données dans la console */
       console.log('Données à enregistrer :', data);
       showToast('✓ (Mode test) Données prêtes — voir la console.');
     }
