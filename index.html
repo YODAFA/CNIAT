@@ -529,7 +529,7 @@
 <div class="toast" id="toast"></div>
 
 <footer style="text-align:center; font-size:11px; color:#9aa5b4; padding: 10px 0 70px; background: var(--gris-bg);">
-  Questionnaire DSDEN — Conférence Nationale des IA-DASEN et IA-DAASEN &nbsp;·&nbsp; <strong style="color:#9aa5b4;">Version 4.4</strong>
+  Questionnaire DSDEN — Conférence Nationale des IA-DASEN et IA-DAASEN &nbsp;·&nbsp; <strong style="color:#9aa5b4;">Version 4.5</strong>
 </footer>
 
 <script>
@@ -874,32 +874,73 @@ function showToast(msg, isErr) {
 }
 
 async function submitForm() {
-  /* Valider la dernière page de saisie (page 3) avant envoi */
   if (!validatePage(3)) return;
   const data = collectData();
+
+  /* Mode test hors Grist */
+  if (typeof grist === 'undefined') {
+    console.log('Données à enregistrer :', data);
+    showToast('✓ (Mode test) Données prêtes — voir la console.');
+    return;
+  }
+
   try {
-    if (typeof grist === 'undefined') {
-      console.log('Données à enregistrer :', data);
-      showToast('✓ (Mode test) Données prêtes — voir la console.');
-      return;
-    }
-    /* Compatibilité toutes versions de l'API Grist DINUM */
-    if (grist.docApi && typeof grist.docApi.addRecords === 'function') {
-      /* API récente */
-      await grist.docApi.addRecords('Reponses_DSDEN', [data]);
-    } else if (typeof grist.addRecords === 'function') {
-      /* API ancienne */
-      await grist.addRecords('Reponses_DSDEN', [data]);
-    } else {
-      /* Méthode universelle par actions Grist */
-      await grist.docApi.applyUserActions([
-        ['AddRecord', 'Reponses_DSDEN', null, data]
-      ]);
-    }
+    /* Méthode 1 : widget API — la plus compatible avec Grist DINUM */
+    const result = await new Promise((resolve, reject) => {
+      /* Construire le tableau de colonnes au format Grist */
+      const columns = {};
+      Object.entries(data).forEach(([k, v]) => { columns[k] = [v]; });
+
+      grist.rpc.callRemoteFunc('addRows', 'Reponses_DSDEN', columns)
+        .then(resolve)
+        .catch(reject);
+    });
     showToast('✓ Réponses enregistrées dans Grist !');
-  } catch(e) {
-    showToast('❌ Erreur : ' + e.message, true);
-    console.error('Détail erreur Grist :', e);
+    console.log('Enregistrement OK :', result);
+  } catch(e1) {
+    console.warn('Méthode 1 échouée :', e1.message, '— essai méthode 2');
+    try {
+      /* Méthode 2 : sendMessage via postMessage (compatible toutes versions) */
+      await new Promise((resolve, reject) => {
+        const columns = {};
+        Object.entries(data).forEach(([k, v]) => { columns[k] = [v]; });
+
+        const handler = (event) => {
+          if (event.data && event.data.mtype === 'addRowsResult') {
+            window.removeEventListener('message', handler);
+            if (event.data.error) reject(new Error(event.data.error));
+            else resolve(event.data);
+          }
+        };
+        window.addEventListener('message', handler);
+
+        window.parent.postMessage({
+          mtype: 'addRows',
+          tableId: 'Reponses_DSDEN',
+          columns
+        }, '*');
+
+        setTimeout(() => { window.removeEventListener('message', handler); reject(new Error('Timeout')); }, 8000);
+      });
+      showToast('✓ Réponses enregistrées dans Grist !');
+    } catch(e2) {
+      console.warn('Méthode 2 échouée :', e2.message, '— essai méthode 3');
+      try {
+        /* Méthode 3 : docApi fetch direct */
+        const info = await grist.docApi.getDocInfo();
+        const docId = info.id;
+        const resp = await fetch(`/api/docs/${docId}/tables/Reponses_DSDEN/records`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ records: [{ fields: data }] })
+        });
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        showToast('✓ Réponses enregistrées dans Grist !');
+      } catch(e3) {
+        showToast('❌ Erreur d\'enregistrement. Contactez l\'administrateur.', true);
+        console.error('Toutes les méthodes ont échoué :', e1.message, '/', e2.message, '/', e3.message);
+      }
+    }
   }
 }
 
@@ -917,7 +958,11 @@ function toggleQ8Autre(select) {
 
 /* ===== INIT GRIST ===== */
 if (typeof grist !== 'undefined') {
-  grist.ready({ requiredAccess: 'full' });
+  grist.ready({
+    requiredAccess: 'full',
+    allowSelectBy: false,
+    columns: []
+  });
 }
 </script>
 </body>
