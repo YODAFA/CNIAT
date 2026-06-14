@@ -878,8 +878,8 @@ async function submitForm() {
   const data = collectData();
 
   /* ===== CONFIGURATION API GRIST ===== */
-  const GRIST_BASE    = 'https://grist.numerique.gouv.fr/o/docs';
-  const GRIST_DOC_ID  = 'r54avrtyaeLJ%2FQuestionnaire-DSDEN-CNIA-2026';
+  const GRIST_BASE    = 'https://grist.numerique.gouv.fr';
+  const GRIST_DOC_ID  = 'r54avrtyaeLJ7dBqoGkZHb';
   const GRIST_API_KEY = '732ff14b4a2f4cf88e72ba65849aeaa5e634518e';
   const GRIST_TABLE   = 'Reponses_DSDEN';
   const GRIST_URL     = `${GRIST_BASE}/api/docs/${GRIST_DOC_ID}/tables/${GRIST_TABLE}/records`;
@@ -904,7 +904,6 @@ async function submitForm() {
 
     if (resp.ok) {
       showToast('✓ Réponses enregistrées avec succès !');
-      /* Optionnel : réinitialiser le formulaire après envoi */
       setTimeout(() => goToPage(0, true), 2000);
     } else {
       const err = await resp.json().catch(() => ({}));
